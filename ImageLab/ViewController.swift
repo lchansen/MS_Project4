@@ -96,6 +96,8 @@ class ViewController: UIViewController   {
         let filterPinch = CIFilter(name:"CIBumpDistortion")!
         filterPinch.setValue(-0.5, forKey: "inputScale")
         filterPinch.setValue(75, forKey: "inputRadius")
+        
+        
         filters.append(filterPinch)
         
     }
