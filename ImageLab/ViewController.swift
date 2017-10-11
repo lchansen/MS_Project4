@@ -9,7 +9,6 @@
 import UIKit
 import AVFoundation
 
-
 class ViewController: UIViewController   {
 
     //MARK: Class Properties
@@ -56,11 +55,10 @@ class ViewController: UIViewController   {
     func processImage(inputImage:CIImage) -> CIImage{
         
         // detect faces
-        
-        //let f = getFaces(img: inputImage)
+        let f = getFaces(img: inputImage)
         
         // if no faces, just return original image
-        //if f.count == 0 { return inputImage }
+        if f.count == 0 { return inputImage }
         
         var retImage = inputImage
         
@@ -82,7 +80,7 @@ class ViewController: UIViewController   {
         // or any bounds to only process a certain bounding region in OpenCV
         self.bridge.setTransforms(self.videoManager.transform)
         self.bridge.setImage(retImage,
-                             withBounds: retImage.extent, // the first face bounds
+                             withBounds: f[0].bounds, // the first face bounds
                              andContext: self.videoManager.getCIContext())
         
         self.bridge.processImage()
@@ -163,7 +161,7 @@ class ViewController: UIViewController   {
         self.videoManager.toggleCameraPosition()
     }
     
-    @IBAction func setFlashLevel(_ sender: UISlider) {
+    @IBAction func setFlashLevel(sender: UISlider) {
         if(sender.value>0.0){
             self.videoManager.turnOnFlashwithLevel(sender.value)
         }
