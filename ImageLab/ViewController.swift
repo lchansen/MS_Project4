@@ -20,7 +20,6 @@ class ViewController: UIViewController   {
     let bridge = OpenCVBridgeSub()
     
     //MARK: Outlets in view
-    @IBOutlet weak var flashSlider: UISlider!
     @IBOutlet weak var stageLabel: UILabel!
     
     //MARK: ViewController Hierarchy
@@ -37,7 +36,7 @@ class ViewController: UIViewController   {
         
         // create dictionary for face detection
         // HINT: you need to manipulate these proerties for better face detection efficiency
-        let optsDetector = [CIDetectorAccuracy:CIDetectorAccuracyLow,CIDetectorTracking:true] as [String : Any]
+        let optsDetector = [CIDetectorAccuracy:CIDetectorAccuracyHigh,CIDetectorTracking:true, CIDetectorSmile:true, CIDetectorEyeBlink:true] as [String : Any]
         
         // setup a face detector in swift
         self.detector = CIDetector(ofType: CIDetectorTypeFace,
@@ -54,17 +53,21 @@ class ViewController: UIViewController   {
     
     //MARK: Process image output
     func processImage(inputImage:CIImage) -> CIImage{
-        
-        // detect faces
         let f = getFaces(img: inputImage)
-        
-        // if no faces, just return original image
-        if f.count == 0 { return inputImage }
-        
         var retImage = inputImage
         
+        // if no faces on the back camera, try to detect heart rate via the finger method
+        if (f.count == 0 && self.videoManager.getCameraPosition()==AVCaptureDevice.Position.back) {
+            self.bridge.setTransforms(self.videoManager.transform)
+            self.bridge.setImage(retImage,
+                                 withBounds: retImage.extent, // the first face bounds
+                                 andContext: self.videoManager.getCIContext())
+            self.bridge.processImage()
+            retImage = self.bridge.getImageComposite() // get back opencv processed part of the image (overlayed on original)
+            return retImage
+        }
         retImage = self.applyFiltersToFaces(inputImage: retImage, features: f)
-        
+        return retImage
         // if you just want to process on separate queue use this code
         // this is a NON BLOCKING CALL, but any changes to the image in OpenCV cannot be displayed real time
 //        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)) { () -> Void in
@@ -81,15 +84,7 @@ class ViewController: UIViewController   {
         
         //HINT: you can also send in the bounds of the face to ONLY process the face in OpenCV
         // or any bounds to only process a certain bounding region in OpenCV
-        self.bridge.setTransforms(self.videoManager.transform)
-        self.bridge.setImage(retImage,
-                             withBounds: f[0].bounds, // the first face bounds
-                             andContext: self.videoManager.getCIContext())
-        
-        self.bridge.processImage()
-        retImage = self.bridge.getImageComposite() // get back opencv processed part of the image (overlayed on original)
-        
-        return retImage
+        //pasted code above
     }
     
     //MARK: Setup filtering
@@ -136,20 +131,35 @@ class ViewController: UIViewController   {
             filtPinch.setValue(75, forKey: "inputRadius")
             
             if(f.hasLeftEyePosition){
+                //put filter over eye
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.leftEyePosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
+                //show text if blinking
+                if(f.leftEyeClosed){
+                    print("Left Eye Blinking")
+                }
             }
             if(f.hasRightEyePosition){
+                //put filter over eye
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.rightEyePosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
+                //show text if blinking
+                if(f.rightEyeClosed){
+                    print("Right Eye Blinking")
+                }
             }
             if(f.hasMouthPosition){
+                //put filter over mouth
                 filtPinch.setValue(0.4, forKey: "inputScale")
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.mouthPosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
+                //show text if smiling
+                if(f.hasSmile){
+                    print("Smiling")
+                }
             }
             
         }
@@ -159,13 +169,11 @@ class ViewController: UIViewController   {
     func getFaces(img:CIImage) -> [CIFaceFeature]{
         // this ungodly mess makes sure the image is the correct orientation
         //let optsFace = [CIDetectorImageOrientation:self.videoManager.getImageOrientationFromUIOrientation(UIApplication.sharedApplication().statusBarOrientation)]
-        let optsFace = [CIDetectorImageOrientation:self.videoManager.ciOrientation]
+        let optsDetector = [CIDetectorImageOrientation:self.videoManager.ciOrientation, CIDetectorAccuracy:CIDetectorAccuracyHigh,CIDetectorTracking:true, CIDetectorSmile:true, CIDetectorEyeBlink:true] as [String : Any]
         // get Face Features
-        return self.detector.features(in: img, options: optsFace) as! [CIFaceFeature]
+        return self.detector.features(in: img, options: optsDetector) as! [CIFaceFeature]
         
     }
-    
-    
     
     @IBAction func swipeRecognized(_ sender: UISwipeGestureRecognizer) {
         switch sender.direction {
@@ -184,27 +192,12 @@ class ViewController: UIViewController   {
     
     //MARK: Convenience Methods for UI Flash and Camera Toggle
     @IBAction func flash(_ sender: AnyObject) {
-        if(self.videoManager.toggleFlash()){
-            self.flashSlider.value = 1.0
-        }
-        else{
-            self.flashSlider.value = 0.0
-        }
+        self.videoManager.toggleFlash()
     }
     
     @IBAction func switchCamera(_ sender: AnyObject) {
         self.videoManager.toggleCameraPosition()
     }
-    
-    @IBAction func setFlashLevel(sender: UISlider) {
-        if(sender.value>0.0){
-            self.videoManager.turnOnFlashwithLevel(1)
-        }
-        else if(sender.value==0.0){
-            self.videoManager.turnOffFlash()
-        }
-    }
-
    
 }
 
