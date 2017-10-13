@@ -17,6 +17,7 @@ class ViewController: UIViewController   {
     var videoManager:VideoAnalgesic! = nil
     let pinchFilterIndex = 2
     var detector:CIDetector! = nil
+    //we'll be using the BridgeSub to handle the heart rate stuff (Module B), and this ViewController to handle the face stuff (Module A)
     let bridge = OpenCVBridgeSub()
     
     //MARK: Outlets in view
@@ -56,6 +57,7 @@ class ViewController: UIViewController   {
         let f = getFaces(img: inputImage)
         var retImage = inputImage
         
+        // Dynamically switch to Module B if there are no faces and the bacl=k camera is active
         // if no faces on the back camera, try to detect heart rate via the finger method
         if (f.count == 0 && self.videoManager.getCameraPosition()==AVCaptureDevice.Position.back) {
             self.bridge.setTransforms(self.videoManager.transform)
@@ -66,25 +68,9 @@ class ViewController: UIViewController   {
             retImage = self.bridge.getImageComposite() // get back opencv processed part of the image (overlayed on original)
             return retImage
         }
+        //Go to Module A of we detect faces on either the front or back camera
         retImage = self.applyFiltersToFaces(inputImage: retImage, features: f)
         return retImage
-        // if you just want to process on separate queue use this code
-        // this is a NON BLOCKING CALL, but any changes to the image in OpenCV cannot be displayed real time
-//        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)) { () -> Void in
-//            self.bridge.setImage(retImage, withBounds: retImage.extent, andContext: self.videoManager.getCIContext())
-//            self.bridge.processImage()
-//        }
-        
-        // use this code if you are using OpenCV and want to overwrite the displayed image via OpenCv
-        // this is a BLOCKING CALL
-//        self.bridge.setTransforms(self.videoManager.transform)
-//        self.bridge.setImage(retImage, withBounds: retImage.extent, andContext: self.videoManager.getCIContext())
-//        self.bridge.processImage()
-//        retImage = self.bridge.getImage()
-        
-        //HINT: you can also send in the bounds of the face to ONLY process the face in OpenCV
-        // or any bounds to only process a certain bounding region in OpenCV
-        //pasted code above
     }
     
     //MARK: Setup filtering
@@ -102,9 +88,6 @@ class ViewController: UIViewController   {
         filterPinch.setValue(0.2, forKey: "inputScale")
         filterPinch.setValue(75, forKey: "inputRadius")
         faceFilters.append(filterPinch)
-        
-        
-        
     }
     
     //MARK: Apply filters and apply feature detectors
@@ -113,7 +96,6 @@ class ViewController: UIViewController   {
         var filterCenter = CGPoint()
         
         for f in features {
-            //set where to apply filter
             filterCenter.x = f.bounds.midX
             filterCenter.y = f.bounds.midY
             
@@ -125,7 +107,7 @@ class ViewController: UIViewController   {
                 retImage = filt.outputImage!
             }
             
-            
+            //After the face is bumped, we need to highlight eyes and mouth by "pinching them"
             let filtPinch = CIFilter(name:"CIPinchDistortion")!
             filtPinch.setValue(0.25, forKey: "inputScale")
             filtPinch.setValue(75, forKey: "inputRadius")
@@ -135,7 +117,7 @@ class ViewController: UIViewController   {
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.leftEyePosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
-                //show text if blinking
+                //display if Left eye blinking
                 if(f.leftEyeClosed){
                     print("Left Eye Blinking")
                 }
@@ -145,7 +127,7 @@ class ViewController: UIViewController   {
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.rightEyePosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
-                //show text if blinking
+                //display if Right eye blinking
                 if(f.rightEyeClosed){
                     print("Right Eye Blinking")
                 }
@@ -156,23 +138,18 @@ class ViewController: UIViewController   {
                 filtPinch.setValue(retImage, forKey: kCIInputImageKey)
                 filtPinch.setValue(CIVector(cgPoint: f.mouthPosition), forKey: "inputCenter")
                 retImage = filtPinch.outputImage!
-                //show text if smiling
+                //display if Smiling
                 if(f.hasSmile){
                     print("Smiling")
                 }
             }
-            
         }
         return retImage
     }
     
     func getFaces(img:CIImage) -> [CIFaceFeature]{
-        // this ungodly mess makes sure the image is the correct orientation
-        //let optsFace = [CIDetectorImageOrientation:self.videoManager.getImageOrientationFromUIOrientation(UIApplication.sharedApplication().statusBarOrientation)]
         let optsDetector = [CIDetectorImageOrientation:self.videoManager.ciOrientation, CIDetectorAccuracy:CIDetectorAccuracyHigh,CIDetectorTracking:true, CIDetectorSmile:true, CIDetectorEyeBlink:true] as [String : Any]
-        // get Face Features
         return self.detector.features(in: img, options: optsDetector) as! [CIFaceFeature]
-        
     }
     
     @IBAction func swipeRecognized(_ sender: UISwipeGestureRecognizer) {
@@ -183,11 +160,8 @@ class ViewController: UIViewController   {
             self.bridge.processType -= 1
         default:
             break
-            
         }
-        
         stageLabel.text = "Stage: \(self.bridge.processType)"
-
     }
     
     //MARK: Convenience Methods for UI Flash and Camera Toggle
@@ -200,63 +174,3 @@ class ViewController: UIViewController   {
     }
    
 }
-
-
-
-
-
-
-//func applyFiltersToFaces(inputImage:CIImage,features:[CIFaceFeature])->CIImage{
-//    var retImage = inputImage
-//    
-//    var maskImage:CIImage? = CIImage()
-//    let bwFilter = CIFilter(name:"CIPhotoEffectNoir")
-//    bwFilter?.setValue(inputImage, forKey: kCIInputImageKey)
-//
-//    for f in features {
-//        let extent = CIVector(x:retImage.extent.origin.x, y:retImage.extent.origin.y, z:retImage.extent.size.width, w:retImage.extent.size.height)
-//
-//        
-//
-//        let radius = 10.0 //CGFloat(min(f.bounds.size.width, f.bounds.size.height) / 2.0);
-//        var filterCenter = CGPoint()
-//        //set where to apply filter
-//        filterCenter.x = f.bounds.midX
-//        filterCenter.y = f.bounds.midY
-//        
-//        let gradient = CIFilter(name:"CIRadialGradient", withInputParameters:["inputRadius0":radius, "inputRadius1":radius+1.0, "inputColor0":CIColor.green, "inputColor1":CIColor.clear, kCIInputCenterKey:filterCenter])
-//
-//        //            gradient?.setValue(radius, forKey: "inputRadius0")
-//        //            gradient?.setValue(radius+1.0, forKey: "inputRadius1")
-//        //            gradient?.setValue(CIColor.green, forKey: "inputColor0")
-//        //            gradient?.setValue(CIColor.red, forKey: "inputColor1")
-//        //            gradient?.setValue(filterCenter, forKey: kCIInputCenterKey)
-//
-//        let circleImage:CIImage = gradient?.value(forKey: kCIOutputImageKey) as! CIImage
-//
-//        if (nil==maskImage){
-//            maskImage = circleImage
-//        } else {
-//            let maskFilt = CIFilter(name:"CISourceOverCompositing")
-//            maskFilt?.setValue(circleImage, forKey: kCIInputImageKey)
-//            maskFilt?.setValue(maskImage, forKey: kCIInputBackgroundImageKey)
-//            maskImage = (maskFilt?.value(forKey: kCIOutputImageKey) as! CIImage)
-//        }
-//
-//        //do for each filter (assumes all filters have property, "inputCenter")
-//        //            for filt in filters{
-//        //                filt.setValue(retImage, forKey: kCIInputImageKey)
-//        //                filt.setValue(CIVector(cgPoint: filterCenter), forKey: "inputCenter")
-//        //                filt.setValue(CIColor.white, forKey: kCIInputColorKey)
-//        //                // could also manipualte the radius of the filter based on face size!
-//        //                retImage = filt.outputImage!
-//        //            }
-//    }
-//    let blendFilter = CIFilter(name:"CIBlendWithMask")
-//    blendFilter?.setValue(bwFilter?.value(forKey: kCIOutputImageKey) as! CIImage, forKey: kCIInputImageKey)
-//    blendFilter?.setValue(retImage, forKey: kCIInputBackgroundImageKey)
-//    blendFilter?.setValue(maskImage, forKey: kCIInputMaskImageKey)
-//
-//    return blendFilter?.value(forKey: kCIOutputImageKey) as! CIImage
-//}
-
